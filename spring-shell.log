@@ -1,0 +1,14 @@
+1635536937666:mask -j ./build/libs/BR.jar
+1635974910946:mask
+1635974932721:quit
+1635975011290:mask -c @BRCpfCnpj.json -j build/libs/BR.jar -f "Telefone" "(011) 99719-2223" "+55 (11) 997192223" "+55 (011) 99719-2223" "11 997192223" "(11) 997192223" "11997192223" "5511997192223" "55011997192223"
+1635975026837:mask -c @BRCpfCnpj.json -j build/libs/BR.jar -f "Telefone" "(011) 99719-2223"
+1635975103898:mask -c @BRCpfCnpj.json -j build/libs/BR.jar -f "Telefone"
+1636031792697:mask -j build/libs/BR.jar -f "BR:BR Multi-column Telefone CM"
+1636031815489:mask -j build/libs/BR.jar -j build/libs/BR.jar -f "BR:BR Multi-column Telefone CM"
+1636031827007:mask -j build/libs/BR.jar -f "BR:BR Multi-column Telefone CM"
+1636031840370:mask -j build/libs/BR.jar -f "BR Multi-column Telefone CM"
+1636031847426:mask -c @BRCpfCnpj.json -j build/libs/BR.jar -f "Telefone"
+1636031885888:mask -c @BRCpfCnpj.json -j build/libs/BR.jar -f "TelefoneMC"
+1636032028784:mask  -j build/libs/BR.jar -f "TelefoneMC"
+1636032074369:mask  -j build/libs/BR.jar -f "Telefone"
