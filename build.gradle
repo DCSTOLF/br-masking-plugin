@@ -17,9 +17,32 @@ import com.delphix.masking.api.plugin.utils.PluginMetadata
 apply plugin: 'idea'
 apply plugin: 'java'
 
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 17
+}
+
 repositories {
     jcenter()
     mavenLocal()
+}
+
+def pluginManifestAttributes = { String apiVersion ->
+    [
+        (PluginMetadata.PLUGIN_NAME_KEY)       : "BR",
+        (PluginMetadata.AUTHOR_NAME_KEY)       : "Delphix Corp",
+        (PluginMetadata.PLUGIN_VERSION_KEY)    : "1.0",
+        (PluginMetadata.EXTENSIBILITY_API_VERSION_KEY): apiVersion,
+        'Build-Timestamp': new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ").format(new Date()),
+        'Created-By'     : "Gradle ${gradle.gradleVersion}",
+        'Build-Jdk'      : "${System.properties['java.version']} (${System.properties['java.vendor']} ${System.properties['java.vm.version']})",
+        'Build-OS'       : "${System.properties['os.name']} ${System.properties['os.arch']} ${System.properties['os.version']}",
+    ]
 }
 
 jar {
@@ -27,19 +50,52 @@ jar {
         configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     }
     includeEmptyDirs = false
+    archiveFileName = 'BR-java17.jar'
+    destinationDirectory = layout.projectDirectory.dir('dist')
 
     manifest {
-        attributes(
-                (PluginMetadata.PLUGIN_NAME_KEY)       : "BR",
-                (PluginMetadata.AUTHOR_NAME_KEY)       : "Delphix Corp",
-                (PluginMetadata.PLUGIN_VERSION_KEY)    : "1.0",
-                (PluginMetadata.EXTENSIBILITY_API_VERSION_KEY): "$maskingExtensibilityVer",
-                'Build-Timestamp': new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ").format(new Date()),
-                'Created-By'     : "Gradle ${gradle.gradleVersion}",
-                'Build-Jdk'      : "${System.properties['java.version']} (${System.properties['java.vendor']} ${System.properties['java.vm.version']})",
-                'Build-OS'       : "${System.properties['os.name']} ${System.properties['os.arch']} ${System.properties['os.version']}",
-        )
+        attributes(pluginManifestAttributes(maskingExtensibilityVer))
     }
+}
+
+def java8ClassesDir = layout.buildDirectory.dir('classes/java/java8')
+def currentApiJar = file("${project.rootDir}/libs/masking-extensibility-api-${maskingExtensibilityVer}.jar")
+def legacyApiJar = file("${project.rootDir}/libs/masking-extensibility-api-${maskingExtensibilityLegacyVer}.jar")
+def java8CompileClasspath = sourceSets.main.compileClasspath.filter {
+    it.name != currentApiJar.name
+}
+if (legacyApiJar.exists()) {
+    java8CompileClasspath += files(legacyApiJar)
+} else {
+    java8CompileClasspath += files(currentApiJar)
+    logger.warn("Legacy Extensibility API JAR not found; compiling Java 8 artifact against ${currentApiJar.name}")
+}
+
+def compileJava8 = tasks.register('compileJava8', JavaCompile) {
+    source = sourceSets.main.java
+    classpath = java8CompileClasspath
+    destinationDirectory = java8ClassesDir
+    options.release = 8
+}
+
+tasks.register('java8Jar', Jar) {
+    dependsOn compileJava8, tasks.named('processResources')
+    from java8ClassesDir
+    from sourceSets.main.output.resourcesDir
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    includeEmptyDirs = false
+    archiveFileName = 'BR-java8.jar'
+    destinationDirectory = layout.projectDirectory.dir('dist')
+
+    manifest {
+        attributes(pluginManifestAttributes(maskingExtensibilityLegacyVer))
+    }
+}
+
+tasks.named('assemble') {
+    dependsOn tasks.named('java8Jar')
 }
 
 dependencies {
@@ -48,4 +104,6 @@ dependencies {
     compileOnly ('com.fasterxml.jackson.core:jackson-databind:' + jacksonVer)
     compileOnly ('com.google.code.findbugs:jsr305:3.0.2')
     implementation 'com.google.guava:guava:' + googleGuavaVer
+    testImplementation configurations.compileOnly
+    testImplementation 'junit:junit:' + junitVer
 }

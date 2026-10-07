@@ -13,6 +13,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -44,6 +45,8 @@ public class CpfCnpj implements MaskingAlgorithm<String> {
     @JsonPropertyDescription("Reference to AlgorithmInstanceReference of type string > SL ")
     public AlgorithmInstanceReference chain_algo_ref;
     private MaskingAlgorithm<String> chained_algo;
+    private MaskingAlgorithm<String> brazilCpfAlgo;
+    private MaskingAlgorithm<String> brazilCnpjAlgo;
 
     @JsonProperty("mask_invalid")
     @JsonPropertyDescription("Flag to mask or not invalid numbers. Default False")
@@ -65,6 +68,18 @@ public class CpfCnpj implements MaskingAlgorithm<String> {
         } catch (Exception e){
             e.printStackTrace();
         }
+        try {
+            brazilCpfAlgo = serviceProvider.getAlgorithmByName(
+                    new AlgorithmInstanceReference("dlpx-core:Brazil CPF"), MaskingType.STRING);
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Unable to load dlpx-core:Brazil CPF; CPF masking will be unavailable", e);
+        }
+        try {
+            brazilCnpjAlgo = serviceProvider.getAlgorithmByName(
+                    new AlgorithmInstanceReference("dlpx-core:Brazil CNPJ"), MaskingType.STRING);
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Unable to load dlpx-core:Brazil CNPJ; alphanumeric CNPJ masking will be unavailable", e);
+        }
     }
 
     private static final Logger LOGGER = Logger.getLogger("InfoLogging");
@@ -77,7 +92,8 @@ public class CpfCnpj implements MaskingAlgorithm<String> {
 
     public static final String[] BLOCKLIST_CNPJ = new String[] {"00000000000000","11111111111111","22222222222222","33333333333333","44444444444444","55555555555555","66666666666666","77777777777777","88888888888888","99999999999999"};
 
-    public static final String DOCTO_REGEX = "^\\s*(?<!\\d|-|/|\\.)((\\d{1,2}\\.?\\d{1,3}\\.?\\d{1,3}/?\\d{4}-?\\d{2})|(\\d{0,3}\\.?\\d{0,3}\\.?\\d{1,3}[-.]?\\d{2}))(?!\\d|-|/|\\.)\\s*$";
+    public static final String DOCTO_REGEX = "^\\s*(?<!\\d|-|/|\\.)(?:(?:\\d{1,2}\\.?\\d{1,3}\\.?\\d{1,3}/?\\d{4}-?\\d{2})|(?:[A-Z0-9]{2}\\.?[A-Z0-9]{3}\\.?[A-Z0-9]{3}/?[A-Z0-9]{4}-?\\d{2})|(?:\\d{0,3}\\.?\\d{0,3}\\.?\\d{1,3}[-.]?\\d{2}))(?!\\d|-|/|\\.)\\s*$";
+    private static final String ALPHANUMERIC_CNPJ_REGEX = "^[A-Z0-9]{12}\\d{2}$";
 
 
 
@@ -134,6 +150,49 @@ public class CpfCnpj implements MaskingAlgorithm<String> {
         return cnpj.equals(cnpj.substring(0,12) + digito1 + digito2);
     }
 
+    private static int calcularDigitoCnpjAlfanumerico(String prefix) {
+        int soma = 0;
+        for (int indice = prefix.length() - 1; indice >= 0; indice--) {
+            int value = prefix.charAt(indice) - '0';
+            soma += value * pesoCNPJ[pesoCNPJ.length - prefix.length() + indice];
+        }
+        soma = 11 - soma % 11;
+        return soma > 9 ? 0 : soma;
+    }
+
+    public static boolean isAlphanumericCNPJ(String cnpj) {
+        if (cnpj == null || !cnpj.matches(ALPHANUMERIC_CNPJ_REGEX)) {
+            return false;
+        }
+        if (cnpj.matches("\\d{14}")) {
+            return isCNPJ(cnpj);
+        }
+
+        int digito1 = calcularDigitoCnpjAlfanumerico(cnpj.substring(0, 12));
+        int digito2 = calcularDigitoCnpjAlfanumerico(cnpj.substring(0, 12) + digito1);
+        return cnpj.equals(cnpj.substring(0, 12) + digito1 + digito2);
+    }
+
+    private static String replaceByMaskedCharacters(String original, String masked) throws NonConformantDataException {
+        StringBuilder result = new StringBuilder(original.length());
+        int maskedIndex = 0;
+        for (int i = 0; i < original.length(); i++) {
+            char current = original.charAt(i);
+            if (Character.isLetterOrDigit(current)) {
+                if (maskedIndex >= masked.length()) {
+                    throw new NonConformantDataException("WAR: Brazil masking algorithm returned an invalid value");
+                }
+                result.append(masked.charAt(maskedIndex++));
+            } else {
+                result.append(current);
+            }
+        }
+        if (maskedIndex != masked.length()) {
+            throw new NonConformantDataException("WAR: Brazil masking algorithm returned an invalid value");
+        }
+        return result.toString();
+    }
+
 
 
     private static boolean empty(final String s) {
@@ -153,70 +212,51 @@ public class CpfCnpj implements MaskingAlgorithm<String> {
             return input;
         }
 
-        boolean isCPF, isCNPJ;
         if (!(input.matches(DOCTO_REGEX))) {
             throw new NonConformantDataException("WAR: Input doesn't match a document regex");
         }
+        String alphanumericCnpj = input.replaceAll("[^A-Z0-9]", "");
+        if (alphanumericCnpj.matches(".*[A-Z].*")) {
+            if (!isAlphanumericCNPJ(alphanumericCnpj)) {
+                throw new NonConformantDataException("WAR: Input is not a valid CNPJ document");
+            }
+            if (brazilCnpjAlgo == null) {
+                throw new NonConformantDataException("WAR: dlpx-core:Brazil CNPJ algorithm is unavailable");
+            }
+            String maskedCnpj = brazilCnpjAlgo.mask(alphanumericCnpj);
+            if (!isAlphanumericCNPJ(maskedCnpj)) {
+                throw new NonConformantDataException("WAR: Brazil CNPJ algorithm returned an invalid CNPJ");
+            }
+            return replaceByMaskedCharacters(input, maskedCnpj);
+        }
+
         String numbers = input.replaceAll("[^\\d]", "");
-        StringBuilder result = new StringBuilder();
-        StringBuilder maskedNumbers = new StringBuilder();
-        int stop;
-
-
-        isCPF=isCPF(padLeftZeros(numbers, 11));
-        if (isCPF) {
-            stop = numbers.length()-2;
-            String root = numbers.substring(0, stop);
-            String maskedRoot;
-            try {
-                maskedRoot = chained_algo.mask(root);
-            } catch (MaskingException e){
-                throw new NonConformantDataException("WAR: failed to mask CPF root");
+        if (isCPF(padLeftZeros(numbers, 11))) {
+            if (brazilCpfAlgo == null) {
+                throw new NonConformantDataException("WAR: dlpx-core:Brazil CPF algorithm is unavailable");
             }
-            maskedNumbers.append(maskedRoot);
-            Integer digito1 = calcularDigito(padLeftZeros( maskedNumbers.toString(), 9), pesoCPF);
-            Integer digito2 = calcularDigito(padLeftZeros( maskedNumbers.toString(), 9) + digito1, pesoCPF);
-            maskedNumbers.append(digito1);
-            maskedNumbers.append(digito2);
-        }
-        else{
-            isCNPJ=isCNPJ(padLeftZeros(numbers,14));
-            if (isCNPJ){
-                stop = numbers.length()-6;
-                String root = numbers.substring(0, stop);
-                String branch = numbers.substring(stop, stop+4);
-                String maskedRoot ;
-                try {
-                    maskedRoot = chained_algo.mask(root);
-                } catch (MaskingException e){
-                    throw new NonConformantDataException("WAR: failed to mask CNPJ root");
-                }
-                maskedNumbers.append(maskedRoot);
-                maskedNumbers.append(branch);
-                Integer digito1 = calcularDigito(padLeftZeros( maskedNumbers.toString(), 12), pesoCNPJ);
-                Integer digito2 = calcularDigito(padLeftZeros( maskedNumbers.toString(), 12) + digito1, pesoCNPJ);
-                maskedNumbers.append(digito1);
-                maskedNumbers.append(digito2);            }
-            else
-                throw new NonConformantDataException("WAR: Input is not a valid document");
-        }
-
-        int i =0;
-        int m = 0;
-        while (m<maskedNumbers.length()){
-            if (Character.isDigit(input.charAt(i))){
-                result.append(maskedNumbers.charAt(m));
-                m++;
-            } else {
-                result.append(input.charAt(i));
+            String cpf = padLeftZeros(numbers, 11);
+            String maskedCpf = brazilCpfAlgo.mask(cpf);
+            if (!isCPF(maskedCpf)) {
+                throw new NonConformantDataException("WAR: Brazil CPF algorithm returned an invalid CPF");
             }
-            i++;
-
-        }
-        if (i<input.length() && (! Character.isDigit(input.charAt(i))) ){
-            result.append(input.charAt(i));
+            String visibleMaskedCpf = maskedCpf.substring(maskedCpf.length() - numbers.length());
+            return replaceByMaskedCharacters(input, visibleMaskedCpf);
         }
 
-        return result.toString();
+        if (isCNPJ(padLeftZeros(numbers,14))){
+            if (brazilCnpjAlgo == null) {
+                throw new NonConformantDataException("WAR: dlpx-core:Brazil CNPJ algorithm is unavailable");
+            }
+            String cnpj = padLeftZeros(numbers, 14);
+            String maskedCnpj = brazilCnpjAlgo.mask(cnpj);
+            if (!maskedCnpj.matches("\\d{14}") || !isCNPJ(maskedCnpj)) {
+                throw new NonConformantDataException("WAR: Brazil CNPJ algorithm returned an invalid CNPJ");
+            }
+            String visibleMaskedCnpj = maskedCnpj.substring(maskedCnpj.length() - numbers.length());
+            return replaceByMaskedCharacters(input, visibleMaskedCnpj);
+        }
+        else
+            throw new NonConformantDataException("WAR: Input is not a valid document");
     }
 }
