@@ -17,6 +17,10 @@ numeric and alphanumeric CNPJs are delegated with all 14 characters to
 `dlpx-core:Brazil CNPJ`, without punctuation. Invalid documents are rejected
 before masking.
 
+The CPF and CNPJ core algorithms are configured as named algorithm-instance
+references on the `CpfCnpj` component. Verify that these references resolve to
+available instances in the target Delphix environment.
+
 ## Build
 
 Build both JARs with JDK 17:

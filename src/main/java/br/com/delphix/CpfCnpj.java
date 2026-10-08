@@ -44,6 +44,12 @@ public class CpfCnpj implements MaskingAlgorithm<String> {
     @JsonProperty("chain_algo_ref")
     @JsonPropertyDescription("Reference to AlgorithmInstanceReference of type string > SL ")
     public AlgorithmInstanceReference chain_algo_ref;
+    @JsonProperty("brazil_cpf_algo_ref")
+    @JsonPropertyDescription("Named algorithm instance used to mask valid CPFs")
+    public AlgorithmInstanceReference brazil_cpf_algo_ref;
+    @JsonProperty("brazil_cnpj_algo_ref")
+    @JsonPropertyDescription("Named algorithm instance used to mask valid CNPJs")
+    public AlgorithmInstanceReference brazil_cnpj_algo_ref;
     private MaskingAlgorithm<String> chained_algo;
     private MaskingAlgorithm<String> brazilCpfAlgo;
     private MaskingAlgorithm<String> brazilCnpjAlgo;
@@ -57,6 +63,8 @@ public class CpfCnpj implements MaskingAlgorithm<String> {
         CpfCnpj instanceX = new CpfCnpj();
         instanceX.name = name;
         instanceX.chain_algo_ref = new AlgorithmInstanceReference("dlpx-core:CM Numeric");
+        instanceX.brazil_cpf_algo_ref = new AlgorithmInstanceReference("dlpx-core:Brazil CPF");
+        instanceX.brazil_cnpj_algo_ref = new AlgorithmInstanceReference("dlpx-core:Brazil CNPJ");
         instanceX.mask_invalid = false;
         return Arrays.asList(instanceX);
     }
@@ -70,15 +78,15 @@ public class CpfCnpj implements MaskingAlgorithm<String> {
         }
         try {
             brazilCpfAlgo = serviceProvider.getAlgorithmByName(
-                    new AlgorithmInstanceReference("dlpx-core:Brazil CPF"), MaskingType.STRING);
+                    brazil_cpf_algo_ref, MaskingType.STRING);
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Unable to load dlpx-core:Brazil CPF; CPF masking will be unavailable", e);
+            LOGGER.log(Level.WARNING, "Unable to load configured Brazil CPF algorithm instance; CPF masking will be unavailable", e);
         }
         try {
             brazilCnpjAlgo = serviceProvider.getAlgorithmByName(
-                    new AlgorithmInstanceReference("dlpx-core:Brazil CNPJ"), MaskingType.STRING);
+                    brazil_cnpj_algo_ref, MaskingType.STRING);
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Unable to load dlpx-core:Brazil CNPJ; alphanumeric CNPJ masking will be unavailable", e);
+            LOGGER.log(Level.WARNING, "Unable to load configured Brazil CNPJ algorithm instance; CNPJ masking will be unavailable", e);
         }
     }
 
