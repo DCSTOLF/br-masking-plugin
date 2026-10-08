@@ -1,7 +1,9 @@
 package br.com.delphix;
 
 import com.delphix.masking.api.plugin.MaskingAlgorithm;
+import com.delphix.masking.api.plugin.MaskingComponent;
 import com.delphix.masking.api.plugin.exception.MaskingException;
+import com.delphix.masking.api.plugin.referenceType.AlgorithmInstanceReference;
 import org.junit.Test;
 
 import java.lang.reflect.Field;
@@ -106,6 +108,14 @@ public class CpfCnpjTest {
         } catch (MaskingException expected) {
             assertNull(valueSentToMasker.get());
         }
+    }
+
+    @Test
+    public void defaultInstanceReferencesBrazilAlgorithmsByName() {
+        CpfCnpj algorithm = (CpfCnpj) new CpfCnpj().getDefaultInstances().iterator().next();
+
+        assertEquals("dlpx-core:Brazil CPF", algorithm.brazil_cpf_algo_ref.getValue());
+        assertEquals("dlpx-core:Brazil CNPJ", algorithm.brazil_cnpj_algo_ref.getValue());
     }
 
     @SuppressWarnings("unchecked")
